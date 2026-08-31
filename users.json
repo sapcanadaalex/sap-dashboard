@@ -1,0 +1,11 @@
+[
+  {
+    "username": "admin",
+    "salt": "54159d3f3b107d76db511501",
+    "hash": "9ea4c5cfa217b6e7783fd5f22965a07f3a3c5a83cbbe0a51a1b936f6560f6658",
+    "role": "admin",
+    "access": {
+      "type": "full"
+    }
+  }
+]
