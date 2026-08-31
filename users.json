@@ -7,5 +7,14 @@
     "access": {
       "type": "full"
     }
+  },
+  {
+    "username": "Alex",
+    "salt": "804169a312ead86f330adf9c",
+    "hash": "8ce364124a9a6bcdf99e9af4ff4beb199e9f1b4c877bed43b5a55b2e8be63032",
+    "role": "user",
+    "access": {
+      "type": "full"
+    }
   }
 ]
