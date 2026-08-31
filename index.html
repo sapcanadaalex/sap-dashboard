@@ -608,10 +608,12 @@ function toISODate(v) {
   return String(v).slice(0, 10); // already ISO or unrecognized — leave as-is
 }
 
-let RAW;
-if (Array.isArray(__PARSED)) {
+// Converts the raw SAP export row shape (array of flat objects with
+// "GL Code", "MMR Code", etc.) into { glInfo, rows } used by the dashboard.
+// Shared by the embedded snapshot parse below and by the live data.json fetch.
+function mapRawRowsToDashboardShape(rawArray){
   const glInfo = {};
-  const rows = __PARSED.map(r => {
+  const rows = rawArray.map(r => {
     const gl = r['GL Code'];
     if (gl !== undefined && gl !== null && gl !== '' && !glInfo[gl]) {
       glInfo[gl] = { name: r['GL Account'] || '', budget: r['Budget'] || 0 };
@@ -638,7 +640,12 @@ if (Array.isArray(__PARSED)) {
       inv: r['Inv.No.'] || ''
     };
   });
-  RAW = { glInfo: glInfo, rows: rows };
+  return { glInfo: glInfo, rows: rows };
+}
+
+let RAW;
+if (Array.isArray(__PARSED)) {
+  RAW = mapRawRowsToDashboardShape(__PARSED);
 } else {
   RAW = __PARSED;
 }
@@ -662,6 +669,7 @@ const CORE_EMPLOYEES = ['Ryan Bernard','Jesse Miller','Daniel Rosa','Michael Mos
    URL (see sapb1-integration/README.md) to pull live data.
 ========================================================= */
 const API_BASE_URL = '';                 // e.g. 'http://reporting.yourcompany.local:5080'
+const DATA_JSON_URL = 'data.json';       // relative path to the JSON file hosted alongside this page (e.g. on GitHub Pages)
 const AUTO_REFRESH_MINUTES = 10;         // 0 disables auto-refresh
 let dataSource = 'snapshot';             // 'snapshot' | 'live'
 let lastUpdated = null;
@@ -1938,8 +1946,8 @@ window.__recomputeAfterRowsChange = function(){
   buildFilterPanel();
 };
 
-/* Embedded JSON is refreshed by Power Automate. Browser-side SharePoint fetch is disabled. */
-const EMBEDDED_DATA_MODE = true;
+/* Set to true to always use the snapshot baked into this file and skip live fetching entirely. */
+const EMBEDDED_DATA_MODE = false;
 
 /* =========================================================
    LIVE DATA LOADING (SAP B1 API)
@@ -1962,6 +1970,46 @@ function updateDataSourceUI(status, errMsg){
   if(lastUpdated){
     updChip.style.display = '';
     document.getElementById('lastUpdatedText').textContent = lastUpdated.toLocaleTimeString();
+  }
+}
+
+async function tryLoadFromDataJson(isManual){
+  const refreshBtn = document.getElementById('refreshBtn');
+  if(isManual){ refreshBtn.disabled = true; refreshBtn.textContent = '↻ Loading…'; }
+  try{
+    const res = await fetch(DATA_JSON_URL, { cache: 'no-store' });
+    if(!res.ok) throw new Error(`GET ${DATA_JSON_URL} failed: HTTP ${res.status}`);
+    const data = await res.json();
+
+    let newRows, newGlInfo;
+    if(Array.isArray(data)){
+      // Raw SAP export rows — same shape as the embedded snapshot. Map them
+      // the same way, so GL budgets in data.json (if present) are picked up too.
+      const mapped = mapRawRowsToDashboardShape(data);
+      newRows = mapped.rows;
+      newGlInfo = mapped.glInfo;
+    } else if(data && data.rows && data.glInfo){
+      newRows = data.rows;
+      newGlInfo = data.glInfo;
+    } else {
+      throw new Error('data.json has unexpected shape');
+    }
+
+    GLINFO = newGlInfo;
+    window.__ALL_ROWS = newRows;
+    ROWS = window.EDB_AUTH ? window.EDB_AUTH.filterRowsForCurrentUser(window.__ALL_ROWS) : newRows;
+    OPTS = computeOpts();
+    buildFilterPanel();
+    dataSource = 'live';
+    lastUpdated = new Date();
+    updateDataSourceUI('live');
+    refreshAll();
+    return true;
+  } catch(err){
+    console.error('[dashboard] data.json fetch failed:', err);
+    return false;
+  } finally {
+    if(isManual){ refreshBtn.disabled = false; refreshBtn.textContent = '↻ Refresh'; }
   }
 }
 
@@ -2009,7 +2057,11 @@ async function tryLoadLive(isManual){
     updateDataSourceUI('live');
     return true;
   }
-  // First choice: pull data.json from the SharePoint library.
+  // First choice: pull data.json hosted alongside this page (e.g. GitHub Pages).
+  const localOk = await tryLoadFromDataJson(isManual);
+  if(localOk) return true;
+
+  // Second choice: pull data.json from the SharePoint library.
   const spOk = await tryLoadFromSharePoint(isManual);
   if(spOk) return true;
 
