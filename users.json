@@ -16,5 +16,22 @@
     "access": {
       "type": "full"
     }
+  },
+  {
+    "username": "Lea",
+    "salt": "a0a81fd906a497e189504b8b",
+    "hash": "b187cc9a9fcdbc385408fb65415a368104702a61d6b31e9f0a42c17f2486f934",
+    "role": "user",
+    "access": {
+      "type": "restricted",
+      "mmrs": [
+        3720,
+        3730
+      ],
+      "depts": [
+        "Administration",
+        "Office"
+      ]
+    }
   }
 ]
