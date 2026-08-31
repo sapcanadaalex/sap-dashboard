@@ -670,6 +670,7 @@ const CORE_EMPLOYEES = ['Ryan Bernard','Jesse Miller','Daniel Rosa','Michael Mos
 ========================================================= */
 const API_BASE_URL = '';                 // e.g. 'http://reporting.yourcompany.local:5080'
 const DATA_JSON_URL = 'data.json';       // relative path to the JSON file hosted alongside this page (e.g. on GitHub Pages)
+const USERS_JSON_URL = 'users.json';     // relative path to the user-accounts JSON file hosted alongside this page
 const AUTO_REFRESH_MINUTES = 10;         // 0 disables auto-refresh
 let dataSource = 'snapshot';             // 'snapshot' | 'live'
 let lastUpdated = null;
@@ -2515,6 +2516,15 @@ document.getElementById('downloadTemplateBtn').addEventListener('click', ()=>{
   let activeSession = null;
 
   async function loadUsers(){
+    // First choice: users.json hosted alongside this page (e.g. GitHub Pages).
+    try{
+      const res = await fetch(USERS_JSON_URL, { cache: 'no-store' });
+      if(res.ok){
+        const data = await res.json();
+        if(Array.isArray(data)) return data;
+      }
+    } catch(e){ /* not hosted here, or file doesn't exist yet */ }
+    // Fallback: SharePoint (works only when this page is hosted inside SharePoint).
     try{
       const data = await spGetFileJson(SP_USERS_FILE);
       if(Array.isArray(data)) return data;
@@ -2522,9 +2532,33 @@ document.getElementById('downloadTemplateBtn').addEventListener('click', ()=>{
     return null;
   }
   async function saveUsers(users){
+    // Try SharePoint (works only when hosted inside SharePoint with write access).
+    let savedRemotely = false;
     try{
       await spSaveFileJson(SP_USERS_FILE, users);
+      savedRemotely = true;
     } catch(e){ console.error('SharePoint error saving users.json:', e); }
+
+    if(!savedRemotely){
+      // Static hosting (e.g. GitHub Pages) can't accept writes from the browser.
+      // Offer a download of the updated file so it can be committed manually,
+      // and let the admin know the change is session-only until then.
+      downloadUsersJson(users);
+      alert('Changes are saved for this browser session only.\n\nA users.json file with your changes has been downloaded — upload it to your GitHub repo (overwriting the existing users.json) to make this change permanent for everyone.');
+    }
+  }
+  function downloadUsersJson(users){
+    try{
+      const blob = new Blob([JSON.stringify(users, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'users.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch(e){ console.error('Could not trigger users.json download:', e); }
   }
   async function hashPassword(pw, salt){
     const enc = new TextEncoder().encode(salt + '::' + pw);
